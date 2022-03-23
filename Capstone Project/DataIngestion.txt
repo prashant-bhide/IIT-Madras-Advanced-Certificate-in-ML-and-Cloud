@@ -1,0 +1,160 @@
+##########################################################################################
+##### Project facilitator: Prashant Bhide #####	Project partner: Anilkumar Narayanam #####
+#####                                                                                ##### 
+##### Prepare a script for ingesting the relevant data from AWS RDS and S3 to Hadoop #####
+##########################################################################################
+
+######################### Initial EMR environment setup #########################
+
+##### Created EMR Cluster with Release label:emr-5.24.1, Hadoop distribution:Amazon 2.8.5
+##### Applications: Hive 2.3.4, Sqoop 1.4.7
+##### Hardware: 1 MASTER m4.large and 1 CORE m4.large
+
+##### Update existing packages and install mysql-connector-java needed for sqoop
+[hadoop@ip-172-31-82-238 ~]$ sudo yum update -q -y
+[hadoop@ip-172-31-82-238 ~]$ sudo yum install -q -y mysql-connector-java*
+
+##### Create hadoop directory to hold the incoming RDS and S3 data
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -mkdir /user/hadoop/telco/
+
+
+
+######################### Extracting data from RDS into EMR #########################
+
+##### Using the sqoop command to import the 'train' table data from RDS into the EMR hadoop directory
+[hadoop@ip-172-31-82-238 ~]$ sqoop import --connect jdbc:mysql://mlc-testcapstone.cyaielc9bmnf.us-east-1.rds.amazonaws.com:3306/mlctest --table train --columns "device_id, gender, age, group_train" --target-dir /user/hadoop/telco/train/ --username student --password STUDENT123 -m 1
+21/09/20 20:26:44 INFO mapreduce.ImportJobBase: Transferred 2.3094 MB in 33.122 seconds (71.398 KB/sec)
+21/09/20 20:26:44 INFO mapreduce.ImportJobBase: Retrieved 74645 records.
+
+##### Verify the imported 'train' table data by displaying the top 5 rows using hadoop fs -cat command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -cat /user/hadoop/telco/train/part-m-* | head -5
+-7548291590301750000,M,33,M32+
+6943568600617760000,M,37,M32+
+5441349705980020000,M,40,M32+
+-5393876656119450000,M,33,M32+
+4543988487649880000,M,53,M32+
+
+
+##### Using the sqoop command to import the 'brand_device' table data from RDS into the EMR hadoop directory
+[hadoop@ip-172-31-82-238 ~]$ sqoop import --connect jdbc:mysql://mlc-testcapstone.cyaielc9bmnf.us-east-1.rds.amazonaws.com:3306/mlctest --table brand_device --columns "device_id, phone_brand, device_model" --target-dir /user/hadoop/telco/brand_device/ --username student --password STUDENT123 -m 1
+21/09/20 20:31:41 INFO mapreduce.ImportJobBase: Transferred 6.6723 MB in 23.7679 seconds (287.4664 KB/sec)
+21/09/20 20:31:41 INFO mapreduce.ImportJobBase: Retrieved 187245 records.
+
+##### Verify the imported 'brand_device' table data by displaying the top 5 rows using hadoop fs -cat command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -cat /user/hadoop/telco/brand_device/part-m-* | head -5
+1845358998536310000,meitu,2
+3126957642374570000,meitu,2
+-3051457881268070000,meitu,2
+4608241502940040000,meitu,2
+6005031767544890000,meitu,2
+
+
+##### Using the sqoop command to import the 'events' table data from RDS into the EMR hadoop directory
+[hadoop@ip-172-31-82-238 ~]$ sqoop import --connect jdbc:mysql://mlc-testcapstone.cyaielc9bmnf.us-east-1.rds.amazonaws.com:3306/mlctest --table events --columns "event_id, device_id, timestamp, longitude, latitude" --target-dir /user/hadoop/telco/events/ --username student --password STUDENT123 -m 1
+21/09/20 20:34:06 INFO mapreduce.ImportJobBase: Transferred 185.9524 MB in 40.5118 seconds (4.5901 MB/sec)
+21/09/20 20:34:06 INFO mapreduce.ImportJobBase: Retrieved 3252950 records.
+
+##### Verify the imported 'events' table data by displaying the top 5 rows using hadoop fs -cat command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -cat /user/hadoop/telco/events/part-m-* | head -5
+1,29182687948017100,2016-05-01 00:55:25.0,121.38,31.24
+2,-6401643145415150000,2016-05-01 00:54:12.0,103.65,30.97
+3,-4833982096941400000,2016-05-01 00:08:05.0,106.6,29.7
+4,-6815121365017310000,2016-05-01 00:06:40.0,104.27,23.28
+5,-5373797595892510000,2016-05-01 00:07:18.0,115.88,28.66
+
+
+##### Using the sqoop command to import the 'app_events' table data from RDS into the EMR hadoop directory
+[hadoop@ip-172-31-82-238 ~]$ sqoop import --connect jdbc:mysql://mlc-testcapstone.cyaielc9bmnf.us-east-1.rds.amazonaws.com:3306/mlctest --table app_events --columns "event_id, app_id, is_installed, is_active" --target-dir /user/hadoop/telco/app_events/ --username student --password STUDENT123 -m 1
+21/09/20 20:45:33 INFO mapreduce.ImportJobBase: Transferred 989.2155 MB in 191.3692 seconds (5.1691 MB/sec)
+21/09/20 20:45:33 INFO mapreduce.ImportJobBase: Retrieved 32473067 records.
+
+
+##### Verify the imported 'app_events' table data by displaying the top 5 rows using hadoop fs -cat command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -cat /user/hadoop/telco/app_events/part-m-* | head -5
+2,5927333115845830913,1,1
+2,-5720078949152207372,1,0
+2,-1633887856876571208,1,0
+2,-653184325010919369,1,1
+2,8693964245073640147,1,1
+
+
+
+######################### Extracting data from S3 into EMR #########################
+
+##### AWS S3: You have been provided with the public s3 links for the following data sets:
+##### app_labels: https://capstone-project-mlc-metadata.s3.amazonaws.com/app_labels_new.txt
+##### label_categories: https://capstone-project-mlc-metadata.s3.amazonaws.com/label_categories.csv
+
+##### Option #1 : Trying [s3-dist-cp] cmd to copy the data from public s3 links directly into EMR hadoop directory
+[hadoop@ip-172-31-82-238 ~]$ s3-dist-cp --src https://capstone-project-mlc-metadata.s3.amazonaws.com/app_labels_new.txt --dest /user/hadoop/telco/
+21/09/20 20:47:41 FATAL s3distcp.S3DistCp: Failed to get source file system
+java.io.IOException: No FileSystem for scheme: https
+
+[hadoop@ip-172-31-82-238 ~]$ s3-dist-cp --src s3://capstone-project-mlc-metadata.s3.amazonaws.com/app_labels_new.txt --dest /user/hadoop/telco/
+21/09/20 20:48:35 FATAL s3distcp.S3DistCp: Failed to get source file system
+java.io.FileNotFoundException: No such file or directory 's3://capstone-project-mlc-metadata.s3.amazonaws.com/app_labels_new.txt'
+
+
+##### Option #2 : Since [s3-dist-cp] failed, trying [wget] cmd to download the data from public s3 links to local EMR EC2 directory
+[hadoop@ip-172-31-82-238 ~]$ wget https://capstone-project-mlc-metadata.s3.amazonaws.com/app_labels_new.txt
+app_labels_new.txt                        100%[=====================================================================================>]  10.67M  70.2MB/s    in 0.2s
+2021-09-20 20:49:19 (70.2 MB/s) - ‘app_labels_new.txt’ saved [11190003/11190003]
+
+[hadoop@ip-172-31-82-238 ~]$ wget https://capstone-project-mlc-metadata.s3.amazonaws.com/label_categories.csv
+label_categories.csv                      100%[=====================================================================================>]  16.06K  --.-KB/s    in 0s
+2021-09-20 20:49:47 (43.4 MB/s) - ‘label_categories.csv’ saved [16450/16450]
+
+##### Verify the number of lines in the downloaded S3 files using wc -l command
+[hadoop@ip-172-31-82-238 ~]$ rm *.java; wc -l *
+  459944 app_labels_new.txt
+     931 label_categories.csv
+  460875 total
+
+
+##### Copying 'app_labels_new.txt' file to EMR hadoop directory using the hadoop fs -put command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -mkdir /user/hadoop/telco/app_labels/
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -put app_labels_new.txt /user/hadoop/telco/app_labels/
+
+##### Verify the copied 'app_labels_new.txt' file data by displaying the top 5 rows using hadoop fs -cat command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -cat /user/hadoop/telco/app_labels/app_labels_new.txt | head -5
+app_id,label_id
+7324884708820027918,251
+-4494216993218550286,251
+6058196446775239644,406
+6058196446775239644,407
+
+
+##### Copying 'label_categories.csv' file to EMR hadoop directory using the hadoop fs -put command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -mkdir /user/hadoop/telco/label_categories/
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -put label_categories.csv /user/hadoop/telco/label_categories/
+
+##### Verify the copied 'label_categories.csv' file data by displaying the top 5 rows using hadoop fs -cat command
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -cat /user/hadoop/telco/label_categories/label_categories.csv | head -5
+label_id,category
+1,
+2,game-game type
+3,game-Game themes
+4,game-Art Style
+
+
+##### Check the overall hadoop directory file sizes
+[hadoop@ip-172-31-82-238 ~]$ hadoop fs -ls /user/hadoop/telco/*
+Found 2 items
+-rw-r--r--   1 hadoop hadoop          0 2021-09-20 20:45 /user/hadoop/telco/app_events/_SUCCESS
+-rw-r--r--   1 hadoop hadoop 1037267620 2021-09-20 20:45 /user/hadoop/telco/app_events/part-m-00000
+Found 1 items
+-rw-r--r--   1 hadoop hadoop   11190003 2021-09-20 20:51 /user/hadoop/telco/app_labels/app_labels_new.txt
+Found 2 items
+-rw-r--r--   1 hadoop hadoop          0 2021-09-20 20:31 /user/hadoop/telco/brand_device/_SUCCESS
+-rw-r--r--   1 hadoop hadoop    6996440 2021-09-20 20:31 /user/hadoop/telco/brand_device/part-m-00000
+Found 2 items
+-rw-r--r--   1 hadoop hadoop          0 2021-09-20 20:34 /user/hadoop/telco/events/_SUCCESS
+-rw-r--r--   1 hadoop hadoop  194985245 2021-09-20 20:34 /user/hadoop/telco/events/part-m-00000
+Found 1 items
+-rw-r--r--   1 hadoop hadoop      16450 2021-09-20 20:52 /user/hadoop/telco/label_categories/label_categories.csv
+Found 2 items
+-rw-r--r--   1 hadoop hadoop          0 2021-09-20 20:26 /user/hadoop/telco/train/_SUCCESS
+-rw-r--r--   1 hadoop hadoop    2421599 2021-09-20 20:26 /user/hadoop/telco/train/part-m-00000
+
+
+######################### End of Data Ingestion phase #########################
